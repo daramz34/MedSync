@@ -1,0 +1,95 @@
+models
+User
+├── id
+├── full_name
+├── email (unique)
+├── hashed_password
+├── role (UserRole)
+├── is_verified (bool, default False)
+├── matric_number (nullable — students only)
+├── specialization (Specialization, nullable — doctors only)
+├── phone_number (nullable)
+├── profile_picture_url (nullable)
+├── created_at
+
+RefreshToken
+├── id
+├── user_id (FK → User)
+├── token (String, unique)
+├── expires_at (DateTime)
+├── is_revoked (bool, default False)
+├── created_at
+
+PasswordResetToken
+├── id
+├── user_id (FK → User)
+├── otp (String — 6 digit code)
+├── expires_at (DateTime)
+├── is_used (bool, default False)
+├── created_at
+
+Appointment
+├── id
+├── student_id (FK → User)
+├── doctor_id (FK → User)
+├── reason (Text)
+├── notes (Text, nullable — doctor adds after)
+├── status (AppointmentStatus, default=pending)
+├── appointment_date (Date)
+├── appointment_time (Time)
+├── created_at
+├── updated_at
+
+Prescription
+├── id
+├── appointment_id (FK → Appointment)
+├── student_id (FK → User)
+├── doctor_id (FK → User)
+├── notes (Text, nullable)
+├── created_at
+
+PrescriptionItem (individual drug in a prescription)
+├── id
+├── prescription_id (FK → Prescription)
+├── drug_name (String)
+├── dosage (String)
+├── frequency (Frequency)
+├── duration_days (int)
+├── instructions (Text, nullable)
+
+Medication (student's active medication tracker)
+├── id
+├── student_id (FK → User)
+├── prescription_item_id (FK → PrescriptionItem, nullable)
+├── drug_name (String)
+├── dosage (String)
+├── frequency (Frequency)
+├── duration_days (int)
+├── start_date (Date)
+├── end_date (Date)
+├── status (MedicationStatus, default=active)
+├── reminder_time (Time, nullable)
+├── reminder_enabled (bool, default True)
+├── created_at
+
+MedicationLog
+├── id
+├── medication_id (FK → Medication)
+├── student_id (FK → User)
+├── date (Date)
+├── status (LogStatus)
+├── taken_at (Time, nullable)
+├── notes (Text, nullable)
+├── created_at
+
+Streak
+├── id
+├── student_id (FK → User)
+├── medication_id (FK → Medication)
+├── current_streak (int, default 0)
+├── longest_streak (int, default 0)
+├── total_taken (int, default 0)
+├── total_missed (int, default 0)
+├── total_skipped (int, default 0)
+├── completion_percentage (Float, default 0.0)
+├── updated_at
