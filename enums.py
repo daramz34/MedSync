@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class UserRole(str, Enum):
-    STUDENT = "student"
+    PATIENT = "patient"
     DOCTOR = "doctor"
     ADMIN = "admin"
 

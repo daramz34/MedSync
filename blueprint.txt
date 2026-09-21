@@ -93,3 +93,84 @@ Streak
 ├── total_skipped (int, default 0)
 ├── completion_percentage (Float, default 0.0)
 ├── updated_at
+
+
+
+
+AUTH:
+RegisterPatient  → full_name, email, password, phone_number, patient_id (optional)
+RegisterDoctor   → full_name, email, password, phone_number, specialization
+RegisterAdmin    → full_name, email, password
+LoginRequest     → email, password
+LoginResponse    → access_token, refresh_token, token_type, user: UserResponse
+UserResponse     → id, full_name, email, role, is_verified, patient_id,
+                   specialization, phone_number, profile_picture_url, created_at
+UpdateProfile    → full_name, phone_number (both optional)
+
+TOKEN:
+RefreshRequest   → refresh_token
+TokenResponse    → access_token, refresh_token, token_type
+
+PASSWORD RESET:
+ForgotPassword   → email
+ResetPassword    → email, otp, new_password
+ChangePassword   → current_password, new_password
+
+APPOINTMENTS:
+AppointmentCreate   → doctor_id, reason, appointment_date, appointment_time
+AppointmentResponse → id, patient: UserResponse, doctor: UserResponse,
+                      reason, notes, status, appointment_date,
+                      appointment_time, created_at, updated_at
+AppointmentUpdate   → status, notes (both optional — doctor only)
+PaginatedAppointmentResponse → total, page, limit, results: list[AppointmentResponse]
+
+PRESCRIPTIONS:
+PrescriptionItemCreate  → drug_name, dosage, frequency, duration_days,
+                          instructions (optional), drug_reference_id (optional)
+PrescriptionItemResponse → id, drug_name, dosage, frequency,
+                           duration_days, instructions
+PrescriptionCreate      → appointment_id, notes (optional),
+                          items: list[PrescriptionItemCreate]
+PrescriptionResponse    → id, appointment_id, patient: UserResponse,
+                          doctor: UserResponse, notes,
+                          qr_code_url, qr_issued_at, qr_expires_at,
+                          qr_revoked_at, qr_first_used_at,
+                          items: list[PrescriptionItemResponse],
+                          created_at
+QRScanRequest           → qr_token, password (patient name)
+QRScanResponse          → prescription_id, patient: UserResponse,
+                          items: list[PrescriptionItemResponse],
+                          medications_created: int
+
+MEDICATIONS:
+MedicationCreate    → drug_name, dosage, frequency, duration_days,
+                      start_date, reminder_time (optional),
+                      reminder_enabled (default True)
+MedicationResponse  → id, patient_id, drug_name, dosage, frequency,
+                      duration_days, start_date, end_date,
+                      status, reminder_time, reminder_enabled, created_at
+MedicationUpdate    → status, reminder_time, reminder_enabled (all optional)
+
+LOGS:
+LogCreate   → medication_id, status, notes (optional)
+LogResponse → id, medication_id, date, status, taken_at, notes, created_at
+TodayLogsResponse → date, logs: list[LogResponse]
+
+STREAKS:
+StreakResponse → id, patient_id, medication_id, current_streak,
+                 longest_streak, total_taken, total_missed,
+                 total_skipped, completion_percentage, updated_at
+
+DRUGS (OpenFDA):
+DrugSearchResponse  → name, generic_name, standard_dosage,
+                      warnings, interactions
+DrugReferenceResponse → id, name, generic_name, standard_dosage,
+                        warnings, interactions, fetched_at
+
+ADMIN:
+ClinicStats → total_patients, total_doctors, total_appointments,
+              appointments_today, pending_appointments,
+              confirmed_appointments, completed_appointments,
+              cancelled_appointments, active_medications
+DoctorList  → list[UserResponse]
+PatientList → list[UserResponse] (paginated)
