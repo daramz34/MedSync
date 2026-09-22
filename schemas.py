@@ -63,6 +63,9 @@ class UpdateProfile(SchemaBase):
     phone_number: Optional[str] = Field(default=None, min_length=7, max_length=30)
 
 
+class ProfilePictureUpdate(SchemaBase):
+    profile_picture_url: str = Field(min_length=1, max_length=500)
+
 class RefreshRequest(SchemaBase):
     refresh_token: str = Field(min_length=1)
 

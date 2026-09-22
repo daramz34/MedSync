@@ -5,6 +5,7 @@ from models import User
 from datetime import datetime, timedelta, timezone
 from core.config import settings
 from typing import Any
+import hashlib
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=10)
@@ -20,6 +21,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def _role_value(user: User) -> str:
     """Works whether role is a String column or an Enum column."""
     return user.role.value if hasattr(user.role, "value") else str(user.role)
+def hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
 
 def create_access_token(user: User)-> str:
     now = datetime.now(timezone.utc)
