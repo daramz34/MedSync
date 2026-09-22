@@ -174,3 +174,138 @@ ClinicStats → total_patients, total_doctors, total_appointments,
               cancelled_appointments, active_medications
 DoctorList  → list[UserResponse]
 PatientList → list[UserResponse] (paginated)
+
+
+
+
+
+USER:
+get_user_by_email(db, email) → User | None
+get_user_by_id(db, user_id) → User | None
+create_patient(db, data: RegisterPatient) → User
+create_doctor(db, data: RegisterDoctor) → User
+create_admin(db, data: RegisterAdmin) → User
+authenticate_user(db, email, password) → User | None
+update_profile(db, user_id, data: UpdateProfile) → User
+update_profile_picture(db, user_id, url: str) → User
+
+TOKENS:
+create_refresh_token(db, user_id) → tuple[RefreshToken, str]
+    → generates random token string
+    → hashes it and stores in DB
+    → returns (db_record, raw_token) — raw token sent to client once, never stored
+verify_refresh_token(db, raw_token) → RefreshToken | None
+    → hash the incoming raw token
+    → find matching hash in DB
+    → check not revoked + not expired
+    → return record or None
+revoke_refresh_token(db, raw_token) → None
+    → find by hash → set is_revoked = True
+revoke_all_user_tokens(db, user_id) → None
+    → revoke all refresh tokens for user (force logout all devices)
+
+PASSWORD RESET:
+create_otp(db, user_id) → str
+    → generate 6-digit OTP
+    → store in PasswordResetToken with 10 min expiry
+    → return raw OTP (sent to email)
+verify_otp(db, email, otp) → PasswordResetToken | None
+    → find user by email
+    → find matching OTP that is not used + not expired
+    → return record or None
+use_otp(db, otp_record) → None
+    → set is_used = True
+reset_password(db, user_id, new_password) → User
+    → hash new password → update user
+
+APPOINTMENTS:
+create_appointment(db, data: AppointmentCreate, current_user: User) → Appointment
+    → verify doctor_id exists and role == doctor
+    → check no existing PENDING/CONFIRMED appointment for same patient+doctor+date
+    → create appointment
+get_my_appointments(db, current_user, page, limit, status=None) → dict
+    → patient sees their own
+    → doctor sees theirs
+    → optional filter by status
+get_appointment_by_id(db, appointment_id, current_user) → Appointment | None
+    → verify belongs to patient or doctor
+update_appointment(db, appointment_id, data: AppointmentUpdate, current_user) → Appointment | None
+    → doctor only
+    → if status → COMPLETED, check prescription exists first
+cancel_appointment(db, appointment_id, current_user) → Appointment | None
+    → patient only
+    → only if status == PENDING
+get_all_doctors(db) → list[User]
+    → returns all users with role == doctor
+
+PRESCRIPTIONS:
+create_prescription(db, data: PrescriptionCreate, current_user: User) → Prescription
+    → verify appointment belongs to doctor
+    → verify appointment status == CONFIRMED
+    → create prescription + items
+    → auto-create Medication records for each item
+    → generate QR token → hash it → store hash
+    → generate QR code image → upload to Cloudinary
+    → return prescription
+get_prescription_by_appointment(db, appointment_id, current_user) → Prescription | None
+get_prescription_by_id(db, prescription_id, current_user) → Prescription | None
+scan_qr(db, qr_token, password) → Prescription | None
+    → hash incoming token → find matching record
+    → check qr_revoked_at is None
+    → check qr_expires_at > now
+    → verify password == patient.full_name (case insensitive)
+    → set qr_first_used_at if first time
+    → return prescription
+revoke_qr(db, prescription_id, current_user) → Prescription | None
+    → doctor only
+    → set qr_revoked_at = now
+
+MEDICATIONS:
+create_medication_manual(db, data: MedicationCreate, current_user: User) → Medication
+    → patient manually adds medication
+    → calculate end_date = start_date + duration_days
+    → create Streak record
+create_medications_from_prescription(db, prescription: Prescription) → list[Medication]
+    → called automatically after prescription is created
+    → for each PrescriptionItem → create Medication
+    → start_date = today, end_date = today + duration_days
+    → create Streak record for each
+get_my_medications(db, current_user) → list[Medication]
+get_medication_by_id(db, medication_id, current_user) → Medication | None
+update_medication(db, medication_id, data: MedicationUpdate, current_user) → Medication | None
+delete_medication(db, medication_id, current_user) → Medication | None
+
+LOGS:
+create_log(db, data: LogCreate, current_user: User) → MedicationLog | None
+    → verify medication belongs to patient
+    → check no existing log for today
+    → create log
+    → call update_streak()
+get_today_logs(db, current_user) → list[MedicationLog]
+get_medication_logs(db, medication_id, current_user) → list[MedicationLog]
+
+STREAKS:
+get_or_create_streak(db, patient_id, medication_id) → Streak
+update_streak(db, patient_id, medication_id, log_status: LogStatus) → Streak
+    → taken → streak+1, total_taken+1
+    → missed/skipped → streak=0, total_missed/skipped+1
+    → recalculate completion_percentage
+
+DRUGS (OpenFDA):
+search_drug(drug_name: str) -> list[dict]
+    → call OpenFDA API
+    → parse and return drug info
+    → cache result in DrugReference table
+get_cached_drug(db, drug_name) → DrugReference | None
+    → check if drug already in our DB
+    → if fetched less than 7 days ago → return cached
+    → else → call OpenFDA again
+
+ADMIN:
+get_clinic_stats(db) → dict
+    → count all users by role
+    → count appointments by status
+    → count active medications
+get_all_patients(db, page, limit) → dict
+get_all_doctors(db) → list[User]
+delete_user(db, user_id) → None
