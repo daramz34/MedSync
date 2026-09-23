@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES:int
     ALGORITHM:str
     REFRESH_TOKEN_EXPIRE_DAYS: int 
-
+    OTP_EXPIRE_MINUTES: int 
 
     APP_NAME: str = "CAMPUS HEALTH MANAGER"
     VERSION: str = "1.0.0"

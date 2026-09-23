@@ -94,7 +94,7 @@ class PasswordResetToken(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
                      nullable=False, index=True)
-    otp = Column(String(6), nullable=False)          # NOT unique — 6-digit codes collide
+    otp = Column(String(64), nullable=False, index=True)          # NOT unique — 6-digit codes collide
     expires_at = Column(DateTime(timezone=True), nullable=False)   # ~10 minutes
     is_used = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
