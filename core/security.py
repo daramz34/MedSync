@@ -22,7 +22,7 @@ def _role_value(user: User) -> str:
     """Works whether role is a String column or an Enum column."""
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 def hash_token(raw_token: str) -> str:
-    return hashlib.sha256(raw_token.encode()).hexdigest()
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 def create_access_token(user: User)-> str:
     now = datetime.now(timezone.utc)

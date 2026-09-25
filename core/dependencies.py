@@ -7,7 +7,7 @@ from models import User
 from collections.abc import Callable
 from typing import Any
 from models import User
-
+from enums import UserRole
 oauth_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 def get_current_user(token: str = Depends(oauth_scheme), db:Session=Depends(get_db))-> User:
@@ -42,3 +42,12 @@ def require_role(*allowed_roles: str) -> Callable[..., Any]:
         return current_user
 
     return dependency
+
+
+def require_doctor(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != UserRole.DOCTOR.value:
+        raise HTTPException(403, "Doctor access required")
+    return current_user
+
+
+
