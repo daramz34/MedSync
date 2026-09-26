@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
-        
+    
+
+
+    OPENFDA_URL: str = "https://api.fda.gov/drug/label.json"
+    OPENFDA_API_KEY: str | None = None          # optional — raises the daily limit 1000 → 120,000
+    OPENFDA_CACHE_DAYS: int = 7
+    OPENFDA_TIMEOUT_SECONDS: float = 10.0
+    OPENFDA_RESULT_LIMIT: int = 5
 
     
 
@@ -29,4 +36,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
 
