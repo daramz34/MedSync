@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
-    
 
+    # core/config.py — add
+    REDIS_URL: str | None = None
+    RATE_LIMIT_DEFAULT: str = "100/minute"
 
     OPENFDA_URL: str = "https://api.fda.gov/drug/label.json"
     OPENFDA_API_KEY: str | None = None          # optional — raises the daily limit 1000 → 120,000
