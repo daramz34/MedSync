@@ -9,13 +9,25 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int 
     OTP_EXPIRE_MINUTES: int 
 
-    APP_NAME: str = "CAMPUS HEALTH MANAGER"
+    APP_NAME: str = "MED SYNC"
     VERSION: str = "1.0.0"
 
 
     #mail
-    SENDER_EMAIL:str
-    GMAIL_PASSWORD:str
+    
+    FRONTEND_URL: str = "http://localhost:3000"
+
+
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465                        
+    SMTP_USERNAME: str | None = None           
+    SMTP_PASSWORD: str | None = None            
+    EMAIL_FROM: str 
+   
+    SCHEDULER_ENABLED: bool = True
+    REMINDER_TIMEZONE: str = "Africa/Lagos"     
+    REMINDER_DEDUP_TTL_SECONDS: int = 86400     
+    STALE_APPOINTMENT_HOURS: int = 24
 
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str

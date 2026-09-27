@@ -309,3 +309,17 @@ get_clinic_stats(db) → dict
 get_all_patients(db, page, limit) → dict
 get_all_doctors(db) → list[User]
 delete_user(db, user_id) → None
+
+
+
+POST /auth/register          → create patient account
+POST /auth/register/doctor   → admin only — create doctor
+POST /auth/login             → returns access + refresh token
+POST /auth/refresh           → swap refresh for new pair
+POST /auth/logout            → revoke refresh token
+POST /auth/forgot-password   → send OTP
+POST /auth/reset-password    → verify OTP + update password
+POST /auth/change-password   → logged in user changes password
+GET  /auth/me                → current user profile
+PUT  /auth/me                → update profile
+POST /auth/me/picture        → upload profile picture
