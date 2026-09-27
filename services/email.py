@@ -116,6 +116,30 @@ def send_welcome_email(user) -> bool:
     html_body = BASE_TEMPLATE.format(content=content)
     return send_email(user.email, "👋 Welcome to MedSync!", html_body)
 
+def send_doctor_welcome_email(user) -> bool:
+    """Welcome email for a doctor account created by an admin."""
+    specialization = getattr(user.specialization, "value", user.specialization)
+    specialization = html.escape(str(specialization).replace("_", " ").title())
+
+    content = f"""
+        <h2>Your {html.escape(settings.APP_NAME)} doctor account is ready</h2>
+        <p>Hello Dr. <strong>{html.escape(user.full_name)}</strong>,</p>
+        <p>An administrator has created your doctor account on {html.escape(settings.APP_NAME)}.</p>
+        <div class="stat-box">
+            <div class="stat-label">Specialization</div>
+            <div class="stat-value">{specialization}</div>
+        </div>
+        <p>To get started, sign in with your email address and the password
+        your administrator set for you. If you don't have it, use
+        <em>Forgot password</em> to reset it.</p>
+        <a href="{html.escape(settings.FRONTEND_URL)}" class="btn">Sign in to {html.escape(settings.APP_NAME)}</a>
+    """
+
+    return send_email(
+        user.email,
+        f"Your {settings.APP_NAME} doctor account is ready",
+        BASE_TEMPLATE.format(content=content),
+    )
 
 def send_otp_email(user, otp: str) -> bool:
     content = f"""
