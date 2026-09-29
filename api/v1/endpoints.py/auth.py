@@ -47,18 +47,27 @@ def register(user: RegisterPatient, db: Session = Depends(get_db)):
     return db_patient
 
 @router.post("/register/doctor", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register_doctor(user: RegisterDoctor, db: Session=Depends(get_db), _admin: User = Depends(require_admin)):
+def register_doctor(
+    user: RegisterDoctor,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
     if get_user_by_email(db, user.email):
         raise HTTPException(status_code=409, detail="Email already registered")
-
-
 
     try:
         db_doctor = create_doctor(db, data=user)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered")
+
+    try:
+        send_doctor_welcome_email(db_doctor)
+    except Exception:
+        logger.exception("Doctor welcome email failed for %s", db_doctor.email)
+
     return db_doctor
+
 
 @router.post("/login", response_model=LoginResponse, description="User Login")
 def login(request: OAuth2PasswordRequestForm = Depends(), db: Session=Depends(get_db)):

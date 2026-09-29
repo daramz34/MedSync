@@ -323,3 +323,74 @@ POST /auth/change-password   → logged in user changes password
 GET  /auth/me                → current user profile
 PUT  /auth/me                → update profile
 POST /auth/me/picture        → upload profile picture
+
+
+POST   /appointments/              → patient books (201)
+GET    /appointments/              → my appointments paginated
+GET    /appointments/doctors       → list all doctors (public)
+GET    /appointments/{id}          → single appointment
+PATCH  /appointments/{id}          → doctor updates status + notes
+DELETE /appointments/{id}          → patient cancels if PENDING
+
+
+
+POST /prescriptions/                        → doctor creates (201)
+GET  /prescriptions/                        → patient sees theirs
+GET  /prescriptions/{id}                    → single prescription
+GET  /appointments/{id}/prescription        → prescription for appointment
+POST /prescriptions/scan                    → patient scans QR
+POST /prescriptions/{id}/revoke-qr          → doctor revokes QR
+
+
+
+POST   /medications/               → patient manual add (201)
+GET    /medications/               → my active medications
+GET    /medications/{id}           → single medication
+PATCH  /medications/{id}           → update status/reminder
+DELETE /medications/{id}           → delete medication
+POST   /medications/{id}/test-reminder → manual reminder trigger
+
+
+
+
+POST /logs/                    → log medication intake (201)
+GET  /logs/today               → today's logs
+GET  /logs/{medication_id}     → full log history
+GET  /streaks/{medication_id}  → streak stats
+drugs.py endpoints
+GET /drugs/search?name={drug_name}  → search OpenFDA + cache result
+GET /drugs/{id}                     → get cached drug reference
+admin.py endpoints
+GET    /admin/stats              → clinic statistics
+GET    /admin/patients           → all patients paginated
+GET    /admin/doctors            → all doctors
+POST   /admin/doctors            → register doctor
+DELETE /admin/users/{id}         → remove user
+users.py endpoints
+GET /users/doctors               → public list of doctors with specialization
+GET /users/{id}                  → public profile (name, role, specialization)
+Caching Plan
+Cache these:
+→ GET /users/doctors          key: "doctors_list"           TTL: 10 min
+→ GET /drugs/search?name=X    key: "drug:{name}"            TTL: 24 hours
+→ GET /admin/stats            key: "clinic_stats"           TTL: 5 min
+→ GET /appointments/doctors   key: "doctors_list"           TTL: 10 min
+
+Invalidate when:
+→ New doctor registered       → delete "doctors_list"
+→ Doctor deleted              → delete "doctors_list"
+→ New appointment             → delete "clinic_stats"
+→ Appointment status changes  → delete "clinic_stats"
+Rate Limiting Plan
+Strict (auth routes):
+→ POST /auth/login            5/minute per IP
+→ POST /auth/forgot-password  3/minute per IP
+→ POST /auth/reset-password   3/minute per IP
+
+Medium (write operations):
+→ POST /appointments/         10/minute
+→ POST /prescriptions/        10/minute
+→ POST /prescriptions/scan    5/minute
+
+Global default:
+→ 100/minute on everything else

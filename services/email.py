@@ -51,8 +51,11 @@ def _fmt_time(value) -> str:
     return value.strftime("%I:%M %p").lstrip("0") if value else "—"
 
 
-def _pretty(value: str) -> str:
-    return str(value).replace("_", " ").title() if value else "—"
+def _pretty(value) -> str:
+    if value is None:
+        return "—"
+    value = getattr(value, "value", value)      # unwrap enums → "cardiology", not "Specialization.CARDIOLOGY"
+    return str(value).replace("_", " ").title()
 
 
 # ── BASE TEMPLATE ──
@@ -97,7 +100,7 @@ BASE_TEMPLATE = """
 """
 
 
-# ── EMAIL TEMPLATES ──
+# ── ACCOUNT EMAILS ──
 
 def send_welcome_email(user) -> bool:
     content = f"""
@@ -105,7 +108,7 @@ def send_welcome_email(user) -> bool:
         <p>Hey <strong>{html.escape(user.full_name)}</strong>,</p>
         <p>You're all set. Here's what you can do:</p>
         <div class="stat-box">
-            <p>✅ Book appointments with campus doctors</p>
+            <p>✅ Book appointments with doctors</p>
             <p>✅ Receive and scan prescriptions</p>
             <p>✅ Track your medications</p>
             <p>✅ Keep your streak alive 🔥</p>
@@ -115,6 +118,7 @@ def send_welcome_email(user) -> bool:
     """
     html_body = BASE_TEMPLATE.format(content=content)
     return send_email(user.email, "👋 Welcome to MedSync!", html_body)
+
 
 def send_doctor_welcome_email(user) -> bool:
     """Welcome email for a doctor account created by an admin."""
@@ -141,6 +145,7 @@ def send_doctor_welcome_email(user) -> bool:
         BASE_TEMPLATE.format(content=content),
     )
 
+
 def send_otp_email(user, otp: str) -> bool:
     content = f"""
         <h2>🔐 Password Reset</h2>
@@ -157,16 +162,51 @@ def send_otp_email(user, otp: str) -> bool:
     return send_email(user.email, "🔐 Your password reset code", html_body)
 
 
-def send_appointment_confirmed_email(patient, appointment, doctor) -> bool:
+# ── APPOINTMENT EMAILS ──
+
+def send_appointment_booked_email(doctor, patient, appointment) -> bool:
+    """Doctor is notified when a patient books."""
     content = f"""
-        <h2>✅ Appointment Confirmed</h2>
-        <p>Hey <strong>{html.escape(patient.full_name)}</strong>,</p>
-        <p>Your appointment has been <span class="success">confirmed</span>.</p>
+        <h2>📅 New Appointment Request</h2>
+        <p>Hello Dr. <strong>{html.escape(doctor.full_name)}</strong>,</p>
+        <p><strong>{html.escape(patient.full_name)}</strong> has booked an appointment with you.</p>
         <div class="stat-box">
-            <div class="stat-label">Doctor</div>
-            <div class="stat-value">Dr. {html.escape(doctor.full_name)}
-                ({_pretty(doctor.specialization)})</div>
+            <div class="stat-label">Patient</div>
+            <div class="stat-value">{html.escape(patient.full_name)}</div>
         </div>
+        <div class="stat-box">
+            <div class="stat-label">Date &amp; Time</div>
+            <div class="stat-value">{_fmt_date(appointment.appointment_date)} — {_fmt_time(appointment.appointment_time)}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Reason</div>
+            <div class="stat-value">{html.escape(appointment.reason or "—")}</div>
+        </div>
+        <a href="{html.escape(settings.FRONTEND_URL)}" class="btn">Review Request</a>
+    """
+    html_body = BASE_TEMPLATE.format(content=content)
+    return send_email(doctor.email, f"📅 New appointment request from {patient.full_name}", html_body)
+
+
+_STATUS_COPY = {
+    "pending":   ("⏳ Appointment Pending",   "is <span class='urgent'>pending</span>"),
+    "confirmed": ("✅ Appointment Confirmed", "has been <span class='success'>confirmed</span>"),
+    "completed": ("🎉 Appointment Completed", "is <span class='success'>complete</span>"),
+    "cancelled": ("📅 Appointment Cancelled", "has been <span class='urgent'>cancelled</span>"),
+}
+
+
+def send_appointment_status_email(patient, appointment, doctor, new_status) -> bool:
+    """Patient is notified whenever the doctor changes the status."""
+    key = str(getattr(new_status, "value", new_status)).lower()
+    heading, sentence = _STATUS_COPY.get(
+        key, ("📅 Appointment Updated", f"is now <strong>{_pretty(key)}</strong>")
+    )
+
+    content = f"""
+        <h2>{heading}</h2>
+        <p>Hey <strong>{html.escape(patient.full_name)}</strong>,</p>
+        <p>Your appointment with Dr. <strong>{html.escape(doctor.full_name)}</strong> {sentence}.</p>
         <div class="stat-box">
             <div class="stat-label">Date &amp; Time</div>
             <div class="stat-value">{_fmt_date(appointment.appointment_date)} — {_fmt_time(appointment.appointment_time)}</div>
@@ -178,23 +218,29 @@ def send_appointment_confirmed_email(patient, appointment, doctor) -> bool:
         <a href="{html.escape(settings.FRONTEND_URL)}" class="btn">View Appointment</a>
     """
     html_body = BASE_TEMPLATE.format(content=content)
-    return send_email(patient.email, "✅ Appointment confirmed", html_body)
+    return send_email(patient.email, heading, html_body)
 
 
-def send_appointment_cancelled_email(patient, appointment) -> bool:
+def send_appointment_cancelled_doctor_email(doctor, patient, appointment) -> bool:
+    """Doctor is notified when the patient cancels."""
     content = f"""
-        <h2>📅 Appointment Cancelled</h2>
-        <p>Hey <strong>{html.escape(patient.full_name)}</strong>,</p>
-        <p>Your appointment on
-           <span class="urgent">{_fmt_date(appointment.appointment_date)}</span>
-           at <strong>{_fmt_time(appointment.appointment_time)}</strong>
-           has been cancelled.</p>
-        <p>You can book a new one anytime.</p>
-        <a href="{html.escape(settings.FRONTEND_URL)}" class="btn">Book Again</a>
+        <h2>❌ Appointment Cancelled</h2>
+        <p>Hello Dr. <strong>{html.escape(doctor.full_name)}</strong>,</p>
+        <p><strong>{html.escape(patient.full_name)}</strong> has cancelled their appointment.</p>
+        <div class="stat-box">
+            <div class="stat-label">Date &amp; Time</div>
+            <div class="stat-value">{_fmt_date(appointment.appointment_date)} — {_fmt_time(appointment.appointment_time)}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Original Reason</div>
+            <div class="stat-value">{html.escape(appointment.reason or "—")}</div>
+        </div>
     """
     html_body = BASE_TEMPLATE.format(content=content)
-    return send_email(patient.email, "📅 Appointment cancelled", html_body)
+    return send_email(doctor.email, f"❌ {patient.full_name} cancelled their appointment", html_body)
 
+
+# ── PRESCRIPTION EMAILS ──
 
 def send_prescription_ready_email(patient, prescription) -> bool:
     content = f"""
@@ -207,6 +253,8 @@ def send_prescription_ready_email(patient, prescription) -> bool:
     html_body = BASE_TEMPLATE.format(content=content)
     return send_email(patient.email, "📋 Your prescription is ready", html_body)
 
+
+# ── MEDICATION EMAILS ──
 
 def send_medication_reminder_email(patient, medication) -> bool:
     content = f"""
