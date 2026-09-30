@@ -1187,3 +1187,17 @@ def delete_user(db: Session, user_id: int, current_user: User) -> User | None:
     db.delete(user)      # cascades refresh tokens, reset tokens, meds, logs, streaks
     db.commit()
     return user
+
+
+def get_or_fetch_drug(db: Session, drug_name: str) -> list[dict]:
+    """Read-through: fresh DB row if < OPENFDA_CACHE_DAYS old, else hit OpenFDA and upsert."""
+    cached = get_cached_drug(db, drug_name)          # your existing 7-day DB cache
+    if cached is not None:
+        return [cached] if isinstance(cached, dict) else [cached]
+
+    results = search_drug(drug_name)                 # your existing OpenFDA call → list[dict]
+    # persist into DrugReference here (align with your model's columns), then return results
+    return results
+
+def get_drug_by_id(db: Session, drug_id: int) -> DrugReference | None:
+    return db.query(DrugReference).filter(DrugReference.id == drug_id).first()

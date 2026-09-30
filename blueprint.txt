@@ -357,6 +357,8 @@ POST /logs/                    → log medication intake (201)
 GET  /logs/today               → today's logs
 GET  /logs/{medication_id}     → full log history
 GET  /streaks/{medication_id}  → streak stats
+
+
 drugs.py endpoints
 GET /drugs/search?name={drug_name}  → search OpenFDA + cache result
 GET /drugs/{id}                     → get cached drug reference
@@ -369,6 +371,7 @@ DELETE /admin/users/{id}         → remove user
 users.py endpoints
 GET /users/doctors               → public list of doctors with specialization
 GET /users/{id}                  → public profile (name, role, specialization)
+
 Caching Plan
 Cache these:
 → GET /users/doctors          key: "doctors_list"           TTL: 10 min

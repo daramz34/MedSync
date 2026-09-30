@@ -5,7 +5,7 @@ from schemas import (RegisterDoctor,LoginResponse, ForgotPassword, RefreshReques
 from crud import (create_patient,verify_refresh_token, revoke_refresh_token, create_refresh_token,  
                  require_admin, create_doctor, authenticate_user, get_user_by_email, 
                  create_otp, verify_otp, use_otp, reset_password, update_profile, update_profile_picture)
-from fastapi import APIRouter,BackgroundTasks, File, UploadFile, HTTPException, status, Depends
+from fastapi import APIRouter,BackgroundTasks, File, UploadFile, HTTPException, status, Depends, Request
 from sqlalchemy.orm import Session
 from types import SimpleNamespace
 from core.security import create_access_token, verify_password
@@ -13,6 +13,7 @@ from core.dependencies import get_current_user
 from fastapi.security import OAuth2PasswordRequestForm
 from services.email import send_welcome_email, send_doctor_welcome_email, send_otp_email
 from models import User
+from core.limiter import limiter
 import logging
 from core.cloudinary import upload
 
@@ -70,8 +71,9 @@ def register_doctor(
 
 
 @router.post("/login", response_model=LoginResponse, description="User Login")
-def login(request: OAuth2PasswordRequestForm = Depends(), db: Session=Depends(get_db)):
-    user = authenticate_user(db, request.username, request.password)
+@limiter.limit("5/minute")
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session=Depends(get_db)):
+    user = authenticate_user(db, form.username, form.password)
 
     if not user:
         raise HTTPException(
@@ -120,7 +122,8 @@ def logout(data: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password")
-def forgot_password(
+@limiter.limit("3/minute")
+def forgot_password(request: Request,
     data: ForgotPassword,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
@@ -136,7 +139,8 @@ def forgot_password(
 
     return {"detail": "If that email is registered, an OTP has been sent."}
 @router.post("/reset-password")
-def reset_password_with_otp(data: ResetPassword, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def reset_password_with_otp(request: Request,data: ResetPassword, db: Session = Depends(get_db)):
     otp_record = verify_otp(db, str(data.email), data.otp)
     if otp_record is None:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")

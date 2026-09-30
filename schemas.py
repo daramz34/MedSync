@@ -289,7 +289,26 @@ class DrugReferenceResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class DoctorResponse(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    phone_number: str | None = None
+    specialization: str | None = None
+    profile_picture_url: str | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PublicUserResponse(BaseModel):
+    """Safe public profile — no email, phone, or patient_id."""
+    id: int
+    full_name: str
+    role: str
+    specialization: str | None = None
+    profile_picture_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class ClinicStats(BaseModel):
     total_patients: int
@@ -302,12 +321,30 @@ class ClinicStats(BaseModel):
     cancelled_appointments: int
     active_medications: int
 
+class DrugResponse(BaseModel):
+    """Adjust field names to match your DrugReference model."""
+    id: int | None = None
+    drug_name: str
+    description: str | None = None
+    dosage: str | None = None
+    warnings: str | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+    
 class DoctorList(BaseModel):
     doctors: list[UserResponse]
     total: int
     page: int
     limit: int
+class PatientResponse(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    phone_number: str | None = None
+    patient_id: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PatientList(BaseModel):

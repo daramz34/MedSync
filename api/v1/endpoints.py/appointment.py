@@ -3,14 +3,13 @@ from schemas import (AppointmentCreate, PrescriptionResponse, PaginatedAppointme
 from crud import (create_appointment, get_prescription_by_appointment, get_my_appointments, get_appointment_by_id, update_appointment, cancel_appointment, get_all_doctors)
 from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, status, Depends, Response, Query
 from sqlalchemy.orm import Session
-from fastapi_cache.decorator import cache
 from enums import AppointmentStatus
 from core.limiter import limiter
 from core.dependencies import get_current_user
 from services.email import send_appointment_booked_email, send_appointment_status_email,send_appointment_cancelled_doctor_email
 from models import User
 from types import SimpleNamespace
-
+from core.cache import cache, get_cached_model
 
 
 
@@ -21,7 +20,7 @@ def _ctx(obj, *fields):
     return SimpleNamespace(**{f: getattr(obj, f) for f in fields})
 
 @router.post("/", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 def create_appointment_endpoint(request: Request, appointment: AppointmentCreate, background_tasks: BackgroundTasks, db: Session=Depends(get_db),  current_user: User = Depends(get_current_user)):
     db_appointment = create_appointment(db, appointment, current_user)
     background_tasks.add_task(
@@ -30,6 +29,7 @@ def create_appointment_endpoint(request: Request, appointment: AppointmentCreate
         _ctx(current_user, "full_name"),
         _ctx(db_appointment, "appointment_date", "appointment_time", "reason"),
     )
+    cache.delete_prefix("clinic_stats")
     return db_appointment
 
 @router.get("/", response_model=PaginatedAppointmentResponse, status_code=200)
@@ -39,11 +39,20 @@ def list_my_appointments(request: Request, status_filter: AppointmentStatus| Non
     return appointments
 
 
-@router.get("/doctors", response_model=DoctorList, status_code=200)
+@router.get("/doctors", response_model=DoctorList)
 @limiter.limit("30/minute")
-@cache(expire=60) 
-async def get_all_doctors_endpoint(request: Request,db: Session= Depends(get_db), page: int = Query(default=1, ge=1), limit: int = Query(default=10, ge=1, le=100)):
-    return get_all_doctors(db, page, limit)
+def get_all_doctors_endpoint(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return get_cached_model(
+        f"appointments_doctors_list:{page}:{limit}",
+        600,
+        DoctorList,
+        lambda: get_all_doctors(db, page, limit),
+    )
 
 
 
@@ -70,6 +79,7 @@ def update_appointments_endpoint(request: Request,appointment_id: int, update :A
             _ctx(appointment.doctor, "full_name"),
             update.status.value,
         )
+    cache.delete_prefix("clinic_stats")
     return appointment
 
 @router.delete("/{appointment_id}", status_code=204, response_class=Response)

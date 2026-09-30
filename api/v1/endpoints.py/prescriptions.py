@@ -20,7 +20,7 @@ def _ctx(obj, *fields):
     return SimpleNamespace(**{field: getattr(obj, field) for field in fields})
 
 @router.post("/", response_model=PrescriptionResponse, status_code=201)
-@limiter.limit("5/minutes")
+@limiter.limit("10/minutes")
 def create_prescription_endpoint(request: Request, prescription: PrescriptionCreate, background_tasks: BackgroundTasks, db: Session=Depends(get_db),  current_user: User = Depends(get_current_user)):
     db_prescription = create_prescription(db, prescription, current_user)
     background_tasks.add_task(
