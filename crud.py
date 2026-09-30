@@ -537,6 +537,39 @@ def get_prescription_by_appointment(db, appointment_id, current_user) -> Prescri
         .first()
     )
 
+def _prescription_query(db: Session):
+    return db.query(Prescription).options(
+        joinedload(Prescription.patient),
+        joinedload(Prescription.doctor),
+        selectinload(Prescription.items),
+    )
+
+
+def get_my_prescriptions(db: Session, current_user: User, page: int = 1, limit: int = 10) -> dict:
+    if page < 1 or limit < 1:
+        raise HTTPException(status_code=422, detail="Page and limit must be positive")
+
+    query = _prescription_query(db)
+
+    if current_user.role == UserRole.PATIENT.value:
+        query = query.filter(Prescription.patient_id == current_user.id)
+    elif current_user.role == UserRole.DOCTOR.value:
+        query = query.filter(Prescription.doctor_id == current_user.id)
+    elif current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not allowed to view prescriptions")
+
+    total = query.count()
+    results = (
+        query.order_by(Prescription.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+    return {"total": total, "page": page, "limit": limit, "results": results}
+
+
+
+
 def get_prescription_by_id(db, prescription_id, current_user) -> Prescription | None:
     query = (
         db.query(Prescription)

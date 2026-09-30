@@ -137,7 +137,6 @@ class PrescriptionItemCreate(SchemaBase):
     drug_reference_id: Optional[int] = None
 
 
-
 class PrescriptionItemResponse(BaseModel):
     id: int
     drug_name: str
@@ -171,6 +170,12 @@ class PrescriptionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes = True)
+
+class PaginatedPrescriptionResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    results: list[PrescriptionResponse]
 
 
 

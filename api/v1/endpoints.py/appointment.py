@@ -1,6 +1,6 @@
 from database import get_db
-from schemas import (AppointmentCreate, PaginatedAppointmentResponse, AppointmentResponse, AppointmentUpdate, DoctorList)
-from crud import (create_appointment, get_my_appointments, get_appointment_by_id, update_appointment, cancel_appointment, get_all_doctors)
+from schemas import (AppointmentCreate, PrescriptionResponse, PaginatedAppointmentResponse, AppointmentResponse, AppointmentUpdate, DoctorList)
+from crud import (create_appointment, get_prescription_by_appointment, get_my_appointments, get_appointment_by_id, update_appointment, cancel_appointment, get_all_doctors)
 from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, status, Depends, Response, Query
 from sqlalchemy.orm import Session
 from fastapi_cache.decorator import cache
@@ -83,3 +83,16 @@ def cancel_appoitment(request: Request,appointment_id: int, background_tasks: Ba
         _ctx(appointment, "appointment_date", "appointment_time", "reason"),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.get("/{appointment_id}/prescription", response_model=PrescriptionResponse)
+@limiter.limit("30/minute")
+def get_prescription_by_appointment_endpoint(
+    request: Request,
+    appointment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    prescription = get_prescription_by_appointment(db, appointment_id, current_user)
+    if prescription is None:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    return prescription
