@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     OPENFDA_TIMEOUT_SECONDS: float = 10.0
     OPENFDA_RESULT_LIMIT: int = 5
 
+
+    QR_TOKEN_EXPIRE_DAYS: int = 7
+
     
 
 

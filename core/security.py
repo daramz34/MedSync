@@ -6,17 +6,25 @@ from datetime import datetime, timedelta, timezone
 from core.config import settings
 from typing import Any
 import hashlib
-
+import bcrypt
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=10)
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        raise ValueError("Password must be no longer than 72 UTF-8 bytes")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode("utf-8")
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
+def verify_password(password: str, hashed_password: str) -> bool:
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        return False
+    try:
+        return bcrypt.checkpw(encoded, hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 def _role_value(user: User) -> str:
     """Works whether role is a String column or an Enum column."""

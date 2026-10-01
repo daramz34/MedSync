@@ -12,19 +12,20 @@ from core.config import settings
 import httpx
 from sqlalchemy import func, or_
 from core.dependencies import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 OPENFDA_URL = settings.OPENFDA_URL
 CACHE_DAYS = settings.OPENFDA_CACHE_DAYS
 
-def get_user_by_fullname(db: Session, full_name: str):
-    return db.query(User).filter(User.full_name == full_name).first()
+def get_user_by_username(db: Session, username: str):
+    return db.query(User).filter(User.username == username.strip().lower()).first()
 
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
 
-def authenticate_user(db: Session, email: str, password: str):
-    db_user = get_user_by_email(db, email)
+def authenticate_user(db: Session, username: str, password: str):
+    db_user = get_user_by_username(db, username)
     if not db_user:
         return None
     if not verify_password(password, db_user.hashed_password):
@@ -35,6 +36,7 @@ def authenticate_user(db: Session, email: str, password: str):
 
 def create_patient(db: Session, data: RegisterPatient) -> User:
     db_user = User(
+        username=data.username,
         full_name=data.full_name,
         email=str(data.email),
         phone_number=data.phone_number,
@@ -49,6 +51,7 @@ def create_patient(db: Session, data: RegisterPatient) -> User:
 
 def create_doctor(db: Session, data: RegisterDoctor) -> User:
     db_doctor = User(
+        username=data.username,
         full_name=data.full_name,
         email=str(data.email),
         phone_number=data.phone_number,
@@ -65,6 +68,7 @@ def create_doctor(db: Session, data: RegisterDoctor) -> User:
 
 def create_admin(db: Session, user: RegisterAdmin) -> User:
     db_user = User(
+        username=data.username,
         full_name=user.full_name,
         email=user.email,
         hashed_password=hash_password(user.password),
@@ -82,24 +86,38 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
         )
     return current_user
 
-def update_profile(db: Session, current_user: User, data: UpdateProfile) -> User:
+def update_profile(db: Session, user: User, data: UpdateProfile) -> User:
     updates = data.model_dump(exclude_unset=True)
 
-    # full_name is NOT nullable in the DB — don't let anyone null it
-    if "full_name" in updates and updates["full_name"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="full_name cannot be empty",
-        )
+    username = updates.get("username")
+    if username is not None:
+        existing = db.query(User).filter(
+            User.username == username,
+            User.id != user.id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Username already taken")
 
-    allowed_fields = {"full_name", "phone_number"}  # the ONLY things a user may touch
-    for field, value in updates.items():
-        if field in allowed_fields:
-            setattr(current_user, field, value)
+    for field in ("username", "full_name", "phone_number"):
+        value = updates.get(field)
+        if value is not None:
+            setattr(user, field, value.strip() if isinstance(value, str) else value)
 
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Username already taken")
+
+    return user
+
+
+def clear_profile_picture(db: Session, user: User) -> User:
+    user.profile_picture_url = None
     db.commit()
-    db.refresh(current_user)
-    return current_user
+    db.refresh(user)
+    return user
 
 
 def update_profile_picture(db: Session, current_user: User, url: str) -> User:
@@ -1164,28 +1182,44 @@ def get_all_patients(db: Session, page: int = 1, limit: int = 10) -> dict:
     return {"total": total, "page": page, "limit": limit, "results": results}
 
 
+from sqlalchemy.exc import IntegrityError
+
 def delete_user(db: Session, user_id: int, current_user: User) -> User | None:
     if user_id == current_user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = get_user_by_id(db, user_id)
     if user is None:
         return None
 
-    
+    # Block anyone with clinical history — appointments, prescriptions, OR medications
     has_history = (
         db.query(Appointment.id)
         .filter(or_(Appointment.patient_id == user_id, Appointment.doctor_id == user_id))
+        .first()
+        or db.query(Prescription.id)
+        .filter(or_(Prescription.patient_id == user_id, Prescription.doctor_id == user_id))
+        .first()
+        or db.query(Medication.id)
+        .filter(Medication.patient_id == user_id)
         .first()
     )
     if has_history:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "User has appointments; deactivate instead of deleting",
+            "User has clinical history; deactivate instead of deleting",
         )
 
-    db.delete(user)      # cascades refresh tokens, reset tokens, meds, logs, streaks
-    db.commit()
+    try:
+        db.delete(user)      # cascades refresh/reset tokens only if relationships declare it
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "User has related records and cannot be deleted",
+        )
+
     return user
 
 
@@ -1201,3 +1235,6 @@ def get_or_fetch_drug(db: Session, drug_name: str) -> list[dict]:
 
 def get_drug_by_id(db: Session, drug_id: int) -> DrugReference | None:
     return db.query(DrugReference).filter(DrugReference.id == drug_id).first()
+
+def get_user_by_id(db: Session, user_id: int) -> User | None:
+    return db.query(User).filter(User.id == user_id).first()

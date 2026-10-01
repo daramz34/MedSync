@@ -3,9 +3,9 @@ from schemas import (RegisterDoctor,LoginResponse, ForgotPassword, RefreshReques
                      UserResponse, TokenResponse, UpdateProfile, ResetPassword,
                      ChangePassword)
 from crud import (create_patient,verify_refresh_token, revoke_refresh_token, create_refresh_token,  
-                 require_admin, create_doctor, authenticate_user, get_user_by_email, 
+                 require_admin, create_doctor, authenticate_user, get_user_by_email, get_user_by_username, clear_profile_picture,
                  create_otp, verify_otp, use_otp, reset_password, update_profile, update_profile_picture)
-from fastapi import APIRouter,BackgroundTasks, File, UploadFile, HTTPException, status, Depends, Request
+from fastapi import APIRouter,BackgroundTasks, File, UploadFile, HTTPException, status, Depends, Request, Response
 from sqlalchemy.orm import Session
 from types import SimpleNamespace
 from core.security import create_access_token, verify_password
@@ -16,7 +16,7 @@ from models import User
 from core.limiter import limiter
 import logging
 from core.cloudinary import upload
-
+from cloudinary.uploader import destroy
 from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,9 @@ def register(user: RegisterPatient, db: Session = Depends(get_db)):
 
     if get_user_by_email(db, user.email):
         raise HTTPException(status_code=409, detail="Email already registered")
+
+    if get_user_by_username(db, user.username):
+        raise HTTPException(status_code=409, detail="Username already taken")
 
     if user.patient_id and db.query(User.id).filter(
         User.patient_id == user.patient_id
@@ -56,6 +59,9 @@ def register_doctor(
     if get_user_by_email(db, user.email):
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    if get_user_by_username(db, user.username):
+        raise HTTPException(status_code=409, detail="Username already taken")
+
     try:
         db_doctor = create_doctor(db, data=user)
     except IntegrityError:
@@ -68,6 +74,7 @@ def register_doctor(
         logger.exception("Doctor welcome email failed for %s", db_doctor.email)
 
     return db_doctor
+
 
 
 @router.post("/login", response_model=LoginResponse, description="User Login")
@@ -209,3 +216,22 @@ def upload_profile_picture(
         raise HTTPException(status_code=502, detail="Could not upload profile picture")
 
     return update_profile_picture(db, current_user, image_url)
+
+@router.delete("/me/picture", status_code=status.HTTP_204_NO_CONTENT,
+               response_class=Response)
+def remove_profile_picture(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    public_id = f"medsync/profile-pictures/user-{current_user.id}"
+
+    try:
+        result = destroy(public_id, resource_type="image", invalidate=True)
+        if result.get("result") not in {"ok", "not found", "deleted"}:
+            raise RuntimeError(f"Unexpected Cloudinary response: {result}")
+    except Exception:
+        logger.exception("Could not remove profile picture for user %s", current_user.id)
+        raise HTTPException(status_code=502, detail="Could not remove profile picture")
+
+    clear_profile_picture(db, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

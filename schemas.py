@@ -1,31 +1,46 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, Literal
 import enums
 from datetime import datetime, date, time
+import re
+
 
 class SchemaBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+def _clean_username(v: str) -> str:
+    v = v.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,30}", v):
+        raise ValueError("3-30 chars, letters/numbers/_.- only, no spaces")
+    return v
+
 
 class RegisterPatient(SchemaBase):
+    username: str
     full_name: str = Field(min_length=2, max_length=150)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     phone_number: str = Field(min_length=7, max_length=30)
     patient_id: Optional[str] = Field(default=None, max_length=50)
+    _validate_username = field_validator("username")(_clean_username)
 
 
 class RegisterDoctor(SchemaBase):
+    username: str
     full_name: str = Field(min_length=2, max_length=150)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     phone_number: str = Field(min_length=7, max_length=30)
     specialization : enums.Specialization
 
+    _validate_username = field_validator("username")(_clean_username)
+
 class RegisterAdmin(SchemaBase):
+    username: str
     full_name: str = Field(min_length=2, max_length=150)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    _validate_username = field_validator("username")(_clean_username)
 
 
 class LoginRequest(SchemaBase):
@@ -37,6 +52,7 @@ class LoginRequest(SchemaBase):
 
 class UserResponse(BaseModel):
     id: int
+    username: str
     full_name: str
     email: EmailStr
     role: enums.UserRole
@@ -57,11 +73,27 @@ class LoginResponse(BaseModel):
     token_type: Literal["Bearer"] = "Bearer"
     user: UserResponse
 
+def normalize_username(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,30}", value):
+        raise ValueError("Username must be 3–30 characters: letters, numbers, _, . or -")
+    return value
+
 
 class UpdateProfile(SchemaBase):
-    full_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
-    phone_number: Optional[str] = Field(default=None, min_length=7, max_length=30)
+    username: str | None = Field(default=None, min_length=3, max_length=30)
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    phone_number: str | None = None
+    # do NOT add email, role, or profile_picture_url
 
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str | None) -> str | None:
+        return normalize_username(value)
+
+        
 
 class ProfilePictureUpdate(SchemaBase):
     profile_picture_url: str = Field(min_length=1, max_length=500)
@@ -330,7 +362,7 @@ class DrugResponse(BaseModel):
     warnings: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
-    
+
 class DoctorList(BaseModel):
     doctors: list[UserResponse]
     total: int
