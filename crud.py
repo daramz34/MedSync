@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException, status, Depends
 from models import User, Appointment, Prescription, DrugReference,  PrescriptionItem, Medication, MedicationLog, Streak, RefreshToken, PasswordResetToken, utcnow
 from enums import UserRole, AppointmentStatus, MedicationStatus, ACTIVE_APPOINTMENT_STATUSES, LogStatus
-from schemas import (LogCreate, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
+from schemas import (LogCreate, DrugResponse, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
                      AppointmentCreate, RegisterAdmin,RegisterDoctor, MedicationCreate, UpdateProfile)
 from core.security import verify_password, hash_password, hash_token
 from datetime import date, timedelta, timezone
@@ -68,7 +68,7 @@ def create_doctor(db: Session, data: RegisterDoctor) -> User:
 
 def create_admin(db: Session, user: RegisterAdmin) -> User:
     db_user = User(
-        username=data.username,
+        username=user.username,
         full_name=user.full_name,
         email=user.email,
         hashed_password=hash_password(user.password),
@@ -605,22 +605,25 @@ def get_prescription_by_id(db, prescription_id, current_user) -> Prescription | 
     return query.first()
 
 
-def scan_qr(db: Session, qr_token: str, password: str) -> Prescription | None:
-    if not qr_token or not password:
+def scan_qr(db: Session, qr_token: str, current_user: User) -> Prescription | None:
+    if not qr_token or not qr_token.strip():
         return None
 
-    
     prescription = (
         db.query(Prescription)
         .options(
             joinedload(Prescription.patient),
             selectinload(Prescription.items),
         )
-        .filter(Prescription.qr_token_hash == hash_token(qr_token))
+        .filter(Prescription.qr_token_hash == hash_token(qr_token.strip()))
         .first()
     )
 
     if not prescription or not prescription.patient:
+        return None
+
+    # only the patient the prescription was written for may redeem it
+    if prescription.patient_id != current_user.id:
         return None
 
     if prescription.qr_revoked_at is not None or prescription.qr_expires_at is None:
@@ -629,12 +632,7 @@ def scan_qr(db: Session, qr_token: str, password: str) -> Prescription | None:
     if _make_timezone_aware(prescription.qr_expires_at) <= utcnow():
         return None
 
-    expected = prescription.patient.full_name.strip().casefold().encode("utf-8")
-    supplied = password.strip().casefold().encode("utf-8")
-    if not secrets.compare_digest(expected, supplied):
-        return None
-
-
+    # record first scan for auditing; rescans stay allowed so retries work
     if prescription.qr_first_used_at is None:
         prescription.qr_first_used_at = utcnow()
         db.commit()
@@ -1142,13 +1140,14 @@ def search_drug(db: Session, drug_name: str) -> list[DrugReference]:
         return [cached]
 
     results = _fetch_openfda(drug_name)
-    saved = [ref for ref in (_cache_drug(db, r) for r in results) if ref]
+    saved = [ref for ref in (_cache_drug(db, item) for item in results) if ref]
 
     if saved:
         db.commit()
         for ref in saved:
             db.refresh(ref)
     return saved
+
 
 
 def get_clinic_stats(db: Session) -> dict:
@@ -1224,14 +1223,12 @@ def delete_user(db: Session, user_id: int, current_user: User) -> User | None:
 
 
 def get_or_fetch_drug(db: Session, drug_name: str) -> list[dict]:
-    """Read-through: fresh DB row if < OPENFDA_CACHE_DAYS old, else hit OpenFDA and upsert."""
-    cached = get_cached_drug(db, drug_name)          # your existing 7-day DB cache
-    if cached is not None:
-        return [cached] if isinstance(cached, dict) else [cached]
-
-    results = search_drug(drug_name)                 # your existing OpenFDA call → list[dict]
-    # persist into DrugReference here (align with your model's columns), then return results
-    return results
+    """Return JSON-ready drug dicts (cached by the caller, or straight through)."""
+    records = search_drug(db, drug_name)
+    return [
+        DrugResponse.model_validate(record, from_attributes=True).model_dump(mode="json")
+        for record in records
+    ]
 
 def get_drug_by_id(db: Session, drug_id: int) -> DrugReference | None:
     return db.query(DrugReference).filter(DrugReference.id == drug_id).first()

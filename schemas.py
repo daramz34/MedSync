@@ -213,8 +213,7 @@ class PaginatedPrescriptionResponse(BaseModel):
 
 class QRScanRequest(SchemaBase):
     qr_token: str = Field(min_length=1, max_length=255)
-    password: str = Field(min_length=1, max_length=150)
-
+    
 class QRScanResponse(BaseModel):
     prescription_id: int
     patient: UserResponse
@@ -324,6 +323,7 @@ class DrugReferenceResponse(BaseModel):
 class DoctorResponse(BaseModel):
     id: int
     full_name: str
+    username: str
     email: EmailStr
     phone_number: str | None = None
     specialization: str | None = None
@@ -354,14 +354,13 @@ class ClinicStats(BaseModel):
     active_medications: int
 
 class DrugResponse(BaseModel):
-    """Adjust field names to match your DrugReference model."""
-    id: int | None = None
-    drug_name: str
-    description: str | None = None
-    dosage: str | None = None
-    warnings: str | None = None
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    model_config = ConfigDict(from_attributes=True)
+    id: int | None = None
+    drug_name: str = Field(validation_alias="name")
+    description: str | None = Field(default=None, validation_alias="generic_name")
+    dosage: str | None = Field(default=None, validation_alias="standard_dosage")
+    warnings: str | None = None
 
 class DoctorList(BaseModel):
     doctors: list[UserResponse]

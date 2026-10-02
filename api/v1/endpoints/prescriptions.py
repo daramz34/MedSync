@@ -41,11 +41,15 @@ def list_my_prescription(request: Request, page: int= Query(default=1, ge=1), li
 
 
 
-
 @router.post("/scan", response_model=QRScanResponse)
 @limiter.limit("5/minute")
-def scan_prescription_endpoint(request: Request,data: QRScanRequest,db: Session = Depends(get_db)):
-    prescription = scan_qr(db, data.qr_token, data.password)
+def scan_prescription_endpoint(
+    request: Request,
+    data: QRScanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),   # ← added
+):
+    prescription = scan_qr(db, data.qr_token, current_user)   # ← pass user
     if prescription is None:
         raise HTTPException(status_code=404, detail="Invalid, expired, or revoked QR code")
 

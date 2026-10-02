@@ -1,7 +1,7 @@
 from database import get_db
 from schemas import (MedicationCreate, MedicationResponse, MedicationUpdate)
 from crud import (create_medication_manual,get_my_medications,  get_medication_by_id, update_medication, delete_medication)
-from fastapi import APIRouter, BackgroundTasks, Request, HTTPException,  Depends, status, Response
+from fastapi import APIRouter, BackgroundTasks, Request, HTTPException,  Depends, status, Response, Query
 from sqlalchemy.orm import Session
 from fastapi_cache.decorator import cache
 from enums import MedicationStatus, UserRole
@@ -29,16 +29,28 @@ def create_medications(request: Request, medication: MedicationCreate,db: Sessio
     return db_medications
 
 
-
 @router.get("/", response_model=list[MedicationResponse])
 @limiter.limit("30/minute")
-def list_my_active_medications(request: Request, db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
+def list_my_medications(
+    request: Request,
+    status_filter: MedicationStatus | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     medications = get_my_medications(db, current_user)
+
+    if status_filter is not None:
+        return [
+            medication for medication in medications
+            if _value(medication.status) == status_filter.value
+        ]
+
+    # default: active only, as before
     return [
-        medication
-        for medication in medications
+        medication for medication in medications
         if _value(medication.status) == MedicationStatus.ACTIVE.value
     ]
+
 
 
 @router.post("/{medication_id}/test-reminder", status_code=status.HTTP_202_ACCEPTED)
@@ -70,6 +82,7 @@ def get_medication_endpoint(request: Request,medication_id: int,db: Session = De
     if medication is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medication not found")
     return medication
+
 
 
 @router.patch("/{medication_id}", response_model=MedicationResponse)

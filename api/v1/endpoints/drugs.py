@@ -10,7 +10,6 @@ from core.limiter import limiter
 router = APIRouter(prefix="/drugs", tags=["DRUGS"])
 
 
-# static /search BEFORE /{drug_id}
 @router.get("/search", response_model=list[DrugResponse])
 @limiter.limit("30/minute")
 def search_drug_endpoint(
@@ -19,11 +18,15 @@ def search_drug_endpoint(
     db: Session = Depends(get_db),
 ):
     normalized = name.strip().casefold()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Provide a drug name")
+
     return cache.get_or_set(
         f"drug:{normalized}",
         86400,                                  # 24 h
         lambda: get_or_fetch_drug(db, normalized),
     )
+
 
 
 @router.get("/{drug_id}", response_model=DrugResponse)
