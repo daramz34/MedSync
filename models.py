@@ -24,7 +24,7 @@ class User(Base):
     role = Column(String(20), nullable=False, default=UserRole.PATIENT.value)
     is_verified = Column(Boolean, nullable=False, default=False)
 
-    patient_id = Column(String(50), nullable=True, unique=True)  # patients only
+    
     specialization = Column(String(30), nullable=True)               # doctors only
     phone_number = Column(String(30), nullable=True)                 # String: keeps leading 0
     profile_picture_url = Column(String(500), nullable=True)
@@ -241,6 +241,11 @@ class Medication(Base):
         "Streak", back_populates="medication",
         cascade="all, delete-orphan", uselist=False, passive_deletes=True,
     )
+    reminders = relationship(
+        "MedicationReminder", back_populates="medication",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+
 
 
 class MedicationLog(Base):
@@ -282,3 +287,20 @@ class Streak(Base):
 
     patient = relationship("User", back_populates="streaks")
     medication = relationship("Medication", back_populates="streak", uselist=False)
+
+class MedicationReminder(Base):
+    __tablename__ = "medication_reminders"
+    __table_args__ = (
+        UniqueConstraint("medication_id", "time_of_day",
+                         name="uq_medication_reminder_time"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    medication_id = Column(Integer, ForeignKey("medications.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    time_of_day = Column(Time, nullable=False)
+    label = Column(String(30), nullable=True)       # "Morning", "Evening"…
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    medication = relationship("Medication", back_populates="reminders")

@@ -15,6 +15,7 @@ from services.email import send_welcome_email, send_doctor_welcome_email, send_o
 from models import User
 from core.limiter import limiter
 import logging
+from enums import UserRole
 from core.cloudinary import upload
 from cloudinary.uploader import destroy
 from sqlalchemy.exc import IntegrityError
@@ -32,11 +33,7 @@ def register(user: RegisterPatient, db: Session = Depends(get_db)):
     if get_user_by_username(db, user.username):
         raise HTTPException(status_code=409, detail="Username already taken")
 
-    if user.patient_id and db.query(User.id).filter(
-        User.patient_id == user.patient_id
-    ).first():
-        raise HTTPException(status_code=409, detail="That patient ID is already registered")
-
+    
     try:
         db_patient = create_patient(db, data=user)
     except IntegrityError:
@@ -235,3 +232,29 @@ def remove_profile_picture(
 
     clear_profile_picture(db, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/users/{user_id}/verify", response_model=UserResponse)
+def verify_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_verified = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.get("/users/pending", response_model=list[UserResponse])
+def list_pending_users(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    return (
+        db.query(User)
+        .filter(User.role == UserRole.PATIENT.value, User.is_verified.is_(False))
+        .order_by(User.created_at.desc())
+        .all()
+    )

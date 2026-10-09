@@ -1,7 +1,28 @@
-.env
-*.pyc
+﻿# Python
 .venv/
+venv/
 __pycache__/
-*.db
-qr_test.py
-qr_code.png
+*.py[cod]
+local.db
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# Secrets — never commit these
+.env
+.env.*
+*.pem
+
+# Packaging output (contains secrets — never commit)
+medsync.txt
+*.zip
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+*.log

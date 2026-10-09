@@ -8,6 +8,7 @@ from api.v1.endpoints import (admin,
     medications,
     prescriptions,
     streak,
+    reminders,
     users)
 
 api_router = APIRouter()
@@ -21,3 +22,4 @@ api_router.include_router(logs.router)
 api_router.include_router(streak.router)
 api_router.include_router(drugs.router)
 api_router.include_router(admin.router)
+api_router.include_router(reminders.router)

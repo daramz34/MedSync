@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#F4F6F8" />
+    <title>MedSync</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div
+  id="boot-error"
+  style="display:none;padding:24px;font:14px/1.6 ui-monospace,monospace;color:#B91C1C;white-space:pre-wrap"
+></div>
+<script>
+  function show(msg) {
+    var el = document.getElementById('boot-error')
+    el.style.display = 'block'
+    el.textContent += '\n' + msg
+  }
+  window.addEventListener('error', function (e) {
+    show('[error] ' + (e.message || e.error) + (e.filename ? '\n  at ' + e.filename + ':' + e.lineno : ''))
+  })
+  window.addEventListener('unhandledrejection', function (e) {
+    show('[promise] ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason))
+  })
+</script>
+
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

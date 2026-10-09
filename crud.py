@@ -1,15 +1,15 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException, status, Depends
-from models import User, Appointment, Prescription, DrugReference,  PrescriptionItem, Medication, MedicationLog, Streak, RefreshToken, PasswordResetToken, utcnow
+from models import User, Appointment, Prescription, MedicationReminder, DrugReference,  PrescriptionItem, Medication, MedicationLog, Streak, RefreshToken, PasswordResetToken, utcnow
 from enums import UserRole, AppointmentStatus, MedicationStatus, ACTIVE_APPOINTMENT_STATUSES, LogStatus
-from schemas import (LogCreate, DrugResponse, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
+from schemas import (LogCreate, MedicationReminderItem, MedicationReminderResponse, MedicationRemindersUpdate, DrugResponse, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
                      AppointmentCreate, RegisterAdmin,RegisterDoctor, MedicationCreate, UpdateProfile)
 from core.security import verify_password, hash_password, hash_token
-from datetime import date, timedelta, timezone
+from datetime import date, timedelta, timezone, datetime
 from utils.qr import make_qr_png, upload_qr_to_cloudinary
 import secrets
 from core.config import settings
-import httpx
+import httpx 
 from sqlalchemy import func, or_
 from core.dependencies import get_current_user
 from sqlalchemy.exc import IntegrityError
@@ -35,19 +35,22 @@ def authenticate_user(db: Session, username: str, password: str):
 
 
 def create_patient(db: Session, data: RegisterPatient) -> User:
-    db_user = User(
-        username=data.username,
-        full_name=data.full_name,
-        email=str(data.email),
-        phone_number=data.phone_number,
-        patient_id=data.patient_id,
-        hashed_password=hash_password(data.password),
-        role=UserRole.PATIENT.value,
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    try:
+        db_user = User(
+            username=data.username,
+            full_name=data.full_name,
+            email=str(data.email),
+            phone_number=data.phone_number,
+            hashed_password=hash_password(data.password),
+            role=UserRole.PATIENT.value,
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
+    except Exception:
+        db.rollback()
+        raise
 
 def create_doctor(db: Session, data: RegisterDoctor) -> User:
     db_doctor = User(
@@ -623,7 +626,10 @@ def scan_qr(db: Session, qr_token: str, current_user: User) -> Prescription | No
         return None
 
     # only the patient the prescription was written for may redeem it
-    if prescription.patient_id != current_user.id:
+    if current_user.role == UserRole.PATIENT.value:
+        if prescription.patient_id != current_user.id:
+            return None
+    elif current_user.role not in ("doctor", "admin"):
         return None
 
     if prescription.qr_revoked_at is not None or prescription.qr_expires_at is None:
@@ -809,6 +815,30 @@ def get_my_medications(db: Session, current_user: User):
     
     return query.order_by(Medication.created_at.desc()).all()
 
+def set_medication_reminders(
+    db: Session, medication_id: int,
+    data: MedicationRemindersUpdate, current_user: User
+) -> Medication | None:
+    """Replace a medication's reminder times in one transaction."""
+    medication = get_medication_by_id(db, medication_id, current_user)
+    if medication is None:
+        return None
+
+    medication.reminder_enabled = data.enabled
+
+    medication.reminders.clear()          # delete-orphan removes the old rows
+    for item in data.times:
+        medication.reminders.append(
+            MedicationReminder(
+                time_of_day=item.time_of_day,
+                label=item.label,
+                enabled=item.enabled,
+            )
+        )
+
+    db.commit()
+    db.refresh(medication)
+    return medication
 
 
 def get_medication_by_id(db:Session, medication_id: int, current_user: User):
@@ -909,6 +939,17 @@ def delete_medication(db: Session, medication_id: int, current_user: User) -> Me
 
 
 
+def _local_time_now():
+    """Wall-clock time in the scheduler's timezone, so check-ins line up with reminders."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from core.config import settings
+
+    try:
+        tz = ZoneInfo(settings.REMINDER_TIMEZONE)
+    except Exception:
+        tz = None
+    return datetime.now(tz).time().replace(microsecond=0)
 
 def create_log(db: Session, data: LogCreate, current_user: User) -> MedicationLog | None:
     # GUARD: only patients log their own intake
@@ -951,7 +992,8 @@ def create_log(db: Session, data: LogCreate, current_user: User) -> MedicationLo
         patient_id=current_user.id,
         log_date=today,
         status=data.status.value,
-        taken_at=utcnow().time() if data.status == LogStatus.TAKEN else None,
+        taken_at=_local_time_now() if data.status == LogStatus.TAKEN else None,
+
         notes=data.notes,
     )
     db.add(log)
@@ -1229,6 +1271,29 @@ def get_or_fetch_drug(db: Session, drug_name: str) -> list[dict]:
         DrugResponse.model_validate(record, from_attributes=True).model_dump(mode="json")
         for record in records
     ]
+
+def search_drug_references(db: Session, name: str, limit: int = 10):
+    """Find locally stored drug references by name or generic-name prefix."""
+    term = name.strip().lower()
+    if len(term) < 2:
+        return []
+
+    # Treat % and _ in the input literally instead of as SQL wildcards.
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"{escaped}%"
+
+    return (
+        db.query(DrugReference)
+        .filter(
+            or_(
+                func.lower(DrugReference.name).like(pattern, escape="\\"),
+                func.lower(DrugReference.generic_name).like(pattern, escape="\\"),
+            )
+        )
+        .order_by(func.lower(DrugReference.name), DrugReference.id)
+        .limit(limit)
+        .all()
+    )
 
 def get_drug_by_id(db: Session, drug_id: int) -> DrugReference | None:
     return db.query(DrugReference).filter(DrugReference.id == drug_id).first()

@@ -67,8 +67,9 @@ def _release(key: str) -> None:
 
 # ------------------------------------------------------------- job 1
 def check_and_send_reminders() -> None:
-    """Every minute: email patients whose reminder_time matches now (WAT)."""
+    """Every minute: email one reminder per due dose (WAT)."""
     now_wat = datetime.now(WAT)
+    today = now_wat.date()
     db = SessionLocal()
     try:
         meds = (
@@ -76,41 +77,36 @@ def check_and_send_reminders() -> None:
             .filter(
                 Medication.status == MedicationStatus.ACTIVE.value,
                 Medication.reminder_enabled.is_(True),
-                Medication.reminder_time.isnot(None),
-                Medication.start_date <= now_wat.date(),
+                Medication.start_date <= today,
                 or_(Medication.end_date.is_(None),
-                    Medication.end_date >= now_wat.date()),
+                    Medication.end_date >= today),
             )
             .all()
         )
 
         for med in meds:
-            rt = med.reminder_time
-            if rt is None or rt.hour != now_wat.hour or rt.minute != now_wat.minute:
-                continue
+            for slot in med.reminders:                 # ← was: med.reminder_time
+                if not slot.enabled or slot.time_of_day is None:
+                    continue
+                rt = slot.time_of_day
+                if rt.hour != now_wat.hour:
+                    continue
+                # fire on the minute, retry for 5 more if the send failed
+                if not (0 <= now_wat.minute - rt.minute < 5):
+                    continue
 
-            already_logged = (
-                db.query(MedicationLog.id)
-                .filter(
-                    MedicationLog.medication_id == med.id,
-                    MedicationLog.log_date == now_wat.date(),
-                )
-                .first()
-            )
-            if already_logged:
-                continue
+                # ← PER-SLOT key. med.id here kills every dose after the first.
+                key = f"reminder:v2:{slot.id}:{today.isoformat()}"
+                if not _claim(key, settings.REMINDER_DEDUP_TTL_SECONDS):
+                    continue
 
-            key = f"reminder:{med.id}:{now_wat.date().isoformat()}"
-            if not _claim(key, settings.REMINDER_DEDUP_TTL_SECONDS):
-                continue
+                patient = med.patient
+                if patient is None:
+                    _release(key)
+                    continue
 
-            patient = med.patient
-            if patient is None:
-                _release(key)
-                continue
-
-            if not email_service.send_medication_reminder_email(patient, med):
-                _release(key)   # sending failed → allow a retry next minute
+                if not email_service.send_medication_reminder_email(patient, med):
+                    _release(key)                      # same key both calls
 
     except Exception:
         logger.exception("check_and_send_reminders failed")

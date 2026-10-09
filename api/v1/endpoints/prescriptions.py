@@ -20,7 +20,7 @@ def _ctx(obj, *fields):
     return SimpleNamespace(**{field: getattr(obj, field) for field in fields})
 
 @router.post("/", response_model=PrescriptionResponse, status_code=201)
-@limiter.limit("10/minutes")
+@limiter.limit("10/minute")
 def create_prescription_endpoint(request: Request, prescription: PrescriptionCreate, background_tasks: BackgroundTasks, db: Session=Depends(get_db),  current_user: User = Depends(get_current_user)):
     db_prescription = create_prescription(db, prescription, current_user)
     background_tasks.add_task(
@@ -33,7 +33,7 @@ def create_prescription_endpoint(request: Request, prescription: PrescriptionCre
 
 
 @router.get("/", response_model=PaginatedPrescriptionResponse, status_code=200)
-@limiter.limit("30/minutes")
+@limiter.limit("30/minute")
 def list_my_prescription(request: Request, page: int= Query(default=1, ge=1), limit: int =Query(default=10, ge=1, le=100), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     appointments = get_my_prescriptions(db, current_user, page, limit)
     return appointments

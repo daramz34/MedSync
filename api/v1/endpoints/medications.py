@@ -1,6 +1,6 @@
 from database import get_db
-from schemas import (MedicationCreate, MedicationResponse, MedicationUpdate)
-from crud import (create_medication_manual,get_my_medications,  get_medication_by_id, update_medication, delete_medication)
+from schemas import (MedicationCreate,MedicationRemindersUpdate, MedicationResponse, MedicationUpdate)
+from crud import (create_medication_manual,get_my_medications, set_medication_reminders, get_medication_by_id, update_medication, delete_medication)
 from fastapi import APIRouter, BackgroundTasks, Request, HTTPException,  Depends, status, Response, Query
 from sqlalchemy.orm import Session
 from fastapi_cache.decorator import cache
@@ -23,7 +23,7 @@ def _value(value):
     return getattr(value, "value", value)
 
 @router.post("/", response_model=MedicationResponse, status_code=201)
-@limiter.limit("/5minute")
+@limiter.limit("5/minute")
 def create_medications(request: Request, medication: MedicationCreate,db: Session = Depends(get_db),  current_user: User=Depends(get_current_user)):
     db_medications = create_medication_manual(db, medication, current_user)
     return db_medications
@@ -83,6 +83,26 @@ def get_medication_endpoint(request: Request,medication_id: int,db: Session = De
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medication not found")
     return medication
 
+@router.post("/{medication_id}/reminders", response_model=MedicationResponse)
+@limiter.limit("10/minute")
+def set_medication_reminders_endpoint(
+    request: Request,
+    medication_id: int,
+    data: MedicationRemindersUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    times = [item.time_of_day for item in data.times]
+
+    if len(times) != len(set(times)):
+        raise HTTPException(status_code=400, detail="Two reminders cannot share a time")
+    if data.enabled and not times:
+        raise HTTPException(status_code=400, detail="Add at least one reminder time")
+
+    medication = set_medication_reminders(db, medication_id, data, current_user)
+    if medication is None:
+        raise HTTPException(status_code=404, detail="Medication not found")
+    return medication
 
 
 @router.patch("/{medication_id}", response_model=MedicationResponse)

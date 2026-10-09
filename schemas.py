@@ -21,7 +21,6 @@ class RegisterPatient(SchemaBase):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     phone_number: str = Field(min_length=7, max_length=30)
-    patient_id: Optional[str] = Field(default=None, max_length=50)
     _validate_username = field_validator("username")(_clean_username)
 
 
@@ -57,7 +56,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: enums.UserRole
     is_verified: bool
-    patient_id: Optional[str] = None
+    
     specialization: Optional[enums.Specialization] = None
     phone_number: Optional[str] = None
     profile_picture_url: Optional[str] = None
@@ -237,23 +236,42 @@ class MedicationCreate(SchemaBase):
 
 
 
+class MedicationReminderResponse(BaseModel):
+    id: int
+    time_of_day: time
+    label: Optional[str] = None
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MedicationResponse(BaseModel):
     id: int
     patient_id: int
-    drug_name: str 
+    drug_name: str
     dosage: str
     frequency: enums.Frequency
     duration_days: int
     start_date: date
     end_date: Optional[date] = None
     status: enums.MedicationStatus
-    reminder_time: Optional[time] = None
+    reminder_time: Optional[time] = None     
     reminder_enabled: bool
+    reminders: list[MedicationReminderResponse] = []   
     created_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
 
-    model_config= ConfigDict(from_attributes=True)
 
+class MedicationReminderItem(SchemaBase):
+    time_of_day: time
+    label: Optional[str] = Field(default=None, max_length=30)
+    enabled: bool = True
+
+
+class MedicationRemindersUpdate(SchemaBase):
+    enabled: bool
+    times: list[MedicationReminderItem] = []
 
 class MedicationUpdate(SchemaBase):
     status: Optional[enums.MedicationStatus] = None
