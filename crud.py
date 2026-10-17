@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException, status, Depends
-from models import User, Appointment, Prescription, MedicationReminder, DrugReference,  PrescriptionItem, Medication, MedicationLog, Streak, RefreshToken, PasswordResetToken, utcnow
+from models import User, Feedback, Appointment, Prescription, MedicationReminder, DrugReference,  PrescriptionItem, Medication, MedicationLog, Streak, RefreshToken, PasswordResetToken, utcnow
 from enums import UserRole, AppointmentStatus, MedicationStatus, ACTIVE_APPOINTMENT_STATUSES, LogStatus
-from schemas import (LogCreate, MedicationReminderItem, MedicationReminderResponse, MedicationRemindersUpdate, DrugResponse, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
+from schemas import (LogCreate, FeedbackCreate, MedicationReminderItem, MedicationReminderResponse, MedicationRemindersUpdate, DrugResponse, RegisterPatient, AppointmentUpdate, MedicationUpdate, PrescriptionCreate,
                      AppointmentCreate, RegisterAdmin,RegisterDoctor, MedicationCreate, UpdateProfile)
 from core.security import verify_password, hash_password, hash_token
 from datetime import date, timedelta, timezone, datetime
@@ -950,9 +950,20 @@ def _local_time_now():
     except Exception:
         tz = None
     return datetime.now(tz).time().replace(microsecond=0)
+DOSES_PER_DAY = {
+    "once_daily": 1,
+    "twice_daily": 2,
+    "three_times_daily": 3,
+    "weekly": 1,
+}
+
+
+def _doses_per_day(frequency) -> int:
+    value = getattr(frequency, "value", frequency)
+    return DOSES_PER_DAY.get(str(value).lower(), 1)
+
 
 def create_log(db: Session, data: LogCreate, current_user: User) -> MedicationLog | None:
-    # GUARD: only patients log their own intake
     if current_user.role != UserRole.PATIENT.value:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only patients can log medications")
 
@@ -960,14 +971,13 @@ def create_log(db: Session, data: LogCreate, current_user: User) -> MedicationLo
         db.query(Medication)
         .filter(
             Medication.id == data.medication_id,
-            Medication.patient_id == current_user.id
+            Medication.patient_id == current_user.id,
         )
         .first()
     )
     if medication is None:
-        return None                                  # router → 404
+        return None
 
-    # STATE: a finished course can't be logged
     if medication.status != MedicationStatus.ACTIVE.value:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -975,35 +985,43 @@ def create_log(db: Session, data: LogCreate, current_user: User) -> MedicationLo
         )
 
     today = date.today()
-    already = (
-        db.query(MedicationLog.id)
+    expected = _doses_per_day(medication.frequency)
+
+    todays = (
+        db.query(MedicationLog)
         .filter(
             MedicationLog.medication_id == medication.id,
             MedicationLog.log_date == today,
         )
-        .first()                                    
+        .all()
     )
-    if already:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Already logged today")
+    if len(todays) >= expected:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"All {expected} dose{'s' if expected > 1 else ''} for today are already logged",
+        )
 
-    # ACT — one transaction: log + streak together
     log = MedicationLog(
         medication_id=medication.id,
         patient_id=current_user.id,
         log_date=today,
         status=data.status.value,
         taken_at=_local_time_now() if data.status == LogStatus.TAKEN else None,
-
         notes=data.notes,
     )
     db.add(log)
-    db.flush()                                       
-    update_streak(db, current_user.id, medication.id, data.status)   
+    db.flush()
 
-    db.commit()                                      # one commit for both rows
+    # A day counts toward the streak once, when its LAST dose is logged.
+    if len(todays) + 1 == expected:
+        statuses = [l.status for l in todays] + [data.status.value]
+        all_taken = all(s == LogStatus.TAKEN.value for s in statuses)
+        day_status = LogStatus.TAKEN if all_taken else LogStatus.SKIPPED
+        update_streak(db, current_user.id, medication.id, day_status)
+
+    db.commit()
     db.refresh(log)
     return log
-
 
 def get_today_logs(db: Session, current_user: User) -> list[MedicationLog]:
     if current_user.role != UserRole.PATIENT.value:
@@ -1300,3 +1318,46 @@ def get_drug_by_id(db: Session, drug_id: int) -> DrugReference | None:
 
 def get_user_by_id(db: Session, user_id: int) -> User | None:
     return db.query(User).filter(User.id == user_id).first()
+
+
+
+def create_feedback(db: Session, data: FeedbackCreate, current_user: User) -> Feedback:
+    row = Feedback(
+        user_id=current_user.id,
+        page_url=data.page_url,
+        category=data.category,
+        message=data.message.strip(),
+        status="open",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_all_feedback(db: Session, page: int = 1, limit: int = 20,
+                     status_filter: str | None = None, category: str | None = None) -> dict:
+    query = db.query(Feedback).options(joinedload(Feedback.user))
+    if status_filter:
+        query = query.filter(Feedback.status == status_filter)
+    if category:
+        query = query.filter(Feedback.category == category)
+
+    total = query.count()
+    results = (
+        query.order_by(Feedback.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+    return {"total": total, "page": page, "limit": limit, "results": results}
+
+
+def update_feedback_status(db: Session, feedback_id: int, new_status: str) -> Feedback | None:
+    row = db.query(Feedback).filter(Feedback.id == feedback_id).first()
+    if row is None:
+        return None
+    row.status = new_status
+    db.commit()
+    db.refresh(row)
+    return row

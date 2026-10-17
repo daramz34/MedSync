@@ -1,9 +1,9 @@
 from database import get_db
-from schemas import (ClinicStats, DoctorList, PatientList, RegisterDoctor,
-                     UserResponse)
+from schemas import (ClinicStats, DoctorList, FeedbackResponse, PatientList, RegisterDoctor,
+                     UserResponse,FeedbackList,FeedbackUpdate,FeedbackResponse)
 from crud import (get_clinic_stats, get_all_patients, get_all_doctors,
                   create_doctor, delete_user, get_user_by_id, get_user_by_email,
-                  require_admin)
+                  require_admin,update_feedback_status,get_all_feedback,)
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException,
                      Query, Request, Response, status)
 from sqlalchemy.orm import Session
@@ -97,3 +97,54 @@ def remove_user_endpoint(
     cache.delete_prefix("appointments_doctors_list")
     cache.delete_prefix("clinic_stats")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+@router.get("/feedback", response_model=FeedbackList)
+@limiter.limit("30/minute")
+def list_feedback_endpoint(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    status_filter: str | None = Query(default=None, alias="status"),
+    category: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    return get_all_feedback(db, page, limit, status_filter, category)
+
+
+@router.patch("/feedback/{feedback_id}", response_model=FeedbackResponse)
+@limiter.limit("30/minute")
+def update_feedback_endpoint(
+    request: Request,
+    feedback_id: int,
+    data: FeedbackUpdate,
+    db: Session = Depends(get_db),
+):
+    feedback = update_feedback_status(db, feedback_id, data.status)
+    if feedback is None:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    return feedback
+
+@router.get("/feedback", response_model=FeedbackList)
+@limiter.limit("30/minute")
+def list_feedback_endpoint(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    status_filter: str | None = Query(default=None, alias="status"),
+    category: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    return get_all_feedback(db, page, limit, status_filter, category)
+
+
+@router.patch("/feedback/{feedback_id}", response_model=FeedbackResponse)
+@limiter.limit("30/minute")
+def update_feedback_endpoint(
+    request: Request,
+    feedback_id: int,
+    data: FeedbackUpdate,
+    db: Session = Depends(get_db),
+):
+    row = update_feedback_status(db, feedback_id, data.status)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    return row

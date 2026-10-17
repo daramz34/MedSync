@@ -401,3 +401,36 @@ class PatientList(BaseModel):
     page: int
     limit: int
     results: list[UserResponse]
+
+    
+FeedbackCategory = Literal["bug", "confusion", "suggestion"]
+FeedbackStatus = Literal["open", "reviewed", "resolved"]
+
+
+class FeedbackCreate(SchemaBase):
+    category: FeedbackCategory
+    message: str = Field(min_length=3, max_length=2000)
+    page_url: Optional[str] = Field(default=None, max_length=500)
+
+
+class FeedbackUpdate(SchemaBase):
+    status: FeedbackStatus
+
+
+class FeedbackResponse(BaseModel):
+    id: int
+    user: Optional[PublicUserResponse] = None
+    page_url: Optional[str] = None
+    category: str
+    message: str
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FeedbackList(BaseModel):
+    total: int
+    page: int
+    limit: int
+    results: list[FeedbackResponse]

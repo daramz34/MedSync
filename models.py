@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import (
+from sqlalchemy import (Index,
     Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, String, Text, Time, UniqueConstraint)
 from sqlalchemy.orm import relationship
@@ -73,6 +73,7 @@ class User(Base):
         "Streak", back_populates="patient",
         cascade="all, delete-orphan", passive_deletes=True,
     )
+    feedback = relationship("Feedback", back_populates="user", passive_deletes=True)
 
 
 class RefreshToken(Base):
@@ -251,7 +252,7 @@ class Medication(Base):
 class MedicationLog(Base):
     __tablename__ = "medication_logs"
     __table_args__ = (
-        UniqueConstraint("medication_id", "date", name="uq_medication_log_per_day"),
+        Index("ix_medication_log_med_date", "medication_id", "date"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -304,3 +305,18 @@ class MedicationReminder(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     medication = relationship("Medication", back_populates="reminders")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"),
+                     nullable=True, index=True)
+    page_url = Column(String(500), nullable=True)
+    category = Column(String(30), nullable=False)     # bug | confusion | suggestion
+    message = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="open")   # open | reviewed | resolved
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    user = relationship("User", back_populates="feedback")

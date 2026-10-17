@@ -3,5 +3,11 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173 },
+  server: {
+    host: true,                                   // listen on 0.0.0.0
+    allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app'],
+    proxy: {
+      '/api': { target: 'http://localhost:8000', changeOrigin: true, secure: false },
+    },
+  },
 })
