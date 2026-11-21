@@ -397,3 +397,14 @@ Medium (write operations):
 
 Global default:
 → 100/minute on everything else
+
+
+
+
+
+
+notes:
+time should not be a specfic time ( IT SHOULD BE A RANGE AND NOT THE TIME ITSELF )
+ADD PHARMACY
+MEDICAL history
+doctors should e able to monitor patient logs for the drugs
